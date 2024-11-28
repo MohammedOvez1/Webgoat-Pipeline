@@ -1,0 +1,52 @@
+pipeline {
+    agent any
+    environment {
+        SONARQUBE_SERVER = 'SonarQube' // SonarQube server configured in Jenkins
+        SONAR_SCANNER = '/usr/local/bin/sonar-scanner' // Path to Sonar Scanner
+    }
+    stages {
+        stage('Checkout') {
+            steps {
+                echo 'Fetching WebGoat source code...'
+                git branch: 'master', url: 'https://github.com/OWASP/WebGoat.git'
+            }
+        }
+        stage('Build') {
+            steps {
+                echo 'Building the application...'
+                sh 'mvn clean install -Dmaven.test.skip=true'
+            }
+        }
+        stage('SonarQube Scan') {
+            steps {
+                echo 'Running SonarQube analysis...'
+                withSonarQubeEnv('SonarQube') {
+                    sh '''
+                    ${SONAR_SCANNER} \
+                      -Dsonar.projectKey=WebGoat \
+                      -Dsonar.sources=src \
+                      -Dsonar.java.binaries=target/classes \
+                      -Dsonar.host.url=$SONAR_HOST_URL \
+                      -Dsonar.login=$SONAR_AUTH_TOKEN
+                    '''
+                }
+            }
+        }
+        stage('Quality Gate') {
+            steps {
+                echo 'Checking SonarQube quality gate...'
+                timeout(time: 1, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+    }
+    post {
+        success {
+            echo 'Pipeline completed successfully!'
+        }
+        failure {
+            echo 'Pipeline failed. Check logs for details.'
+        }
+    }
+}
